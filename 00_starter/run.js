@@ -1,4 +1,8 @@
-const apiKey = 'YOUR_OPENAI_API_KEY';
+// get the API key from Codespace secrets using os.getenv('OPENAI_API_KEY')
+
+const apiKey = process.env.OPENAI_API_KEY;
+console.log(apiKey);
+
 
 async function chatWithOpenAI() {
     const url = 'https://api.openai.com/v1/chat/completions';
@@ -24,7 +28,10 @@ async function chatWithOpenAI() {
     });
 
     const data = await response.json();
+    
     console.log(data.choices[0].message.content);
+    console.log(JSON.stringify(data));
+  
 }
 
 chatWithOpenAI();
