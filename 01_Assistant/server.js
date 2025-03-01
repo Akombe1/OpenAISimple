@@ -10,7 +10,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static("public2"));
+app.use(express.static("public"));
 
 let assistantId = null;
 let existingAssistants = {};
