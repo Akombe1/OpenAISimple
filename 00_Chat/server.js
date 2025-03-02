@@ -38,7 +38,7 @@ app.post("/chat", async (req, res) => {
 
     const aiResponse = response.choices[0].message;
 
-    res.json({ response: aiResponse, updatedThread: [...messages, aiResponse] });
+    res.json({ response: aiResponse });
 
   } catch (error) {
     console.error("OpenAI API Error:", error);

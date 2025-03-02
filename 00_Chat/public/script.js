@@ -1,7 +1,14 @@
 document.addEventListener("DOMContentLoaded", () => {
     let thread = [];
+    const statusDiv = document.getElementById("status");
+    const chatBox = document.getElementById("chatBox");
 
+    function updateStatus(message) {
+        statusDiv.innerText = message;
+    }
+    
     document.getElementById("runBtn").addEventListener("click", async () => {
+        updateStatus("Running thread ...");
         const systemMessage = document.getElementById("systemMessage").value;
         const userPrompt = document.getElementById("userPrompt").value;
         const model = document.getElementById("modelSelect").value;
@@ -25,8 +32,8 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             const data = await response.json();
-            thread = data.updatedThread;
-
+            
+            updateStatus("Run completed");
             // Add assistant message
             responseBox.innerHTML += `<p class="assistant-msg"><strong>AI:</strong> ${data.response.content}</p>`;
             responseBox.scrollTop = responseBox.scrollHeight;
@@ -40,6 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("newThreadBtn").addEventListener("click", () => {
         thread = [];
         document.getElementById("chatBox").innerHTML = "";
+        // need to implement this in class
     });
 
     document.getElementById("toggleThemeBtn").addEventListener("click", () => {
