@@ -6,7 +6,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function updateStatus(message) {
         statusDiv.innerText = message;
     }
-    
+
     document.getElementById("runBtn").addEventListener("click", async () => {
         updateStatus("Running thread ...");
         const systemMessage = document.getElementById("systemMessage").value;
@@ -32,7 +32,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             const data = await response.json();
-            
+
             updateStatus("Run completed");
             // Add assistant message
             responseBox.innerHTML += `<p class="assistant-msg"><strong>AI:</strong> ${data.response.content}</p>`;
@@ -42,12 +42,6 @@ document.addEventListener("DOMContentLoaded", () => {
             console.error("Error:", error);
             responseBox.innerHTML += `<p class="text-danger">Error fetching response</p>`;
         }
-    });
-
-    document.getElementById("newThreadBtn").addEventListener("click", () => {
-        thread = [];
-        document.getElementById("chatBox").innerHTML = "";
-        // need to implement this in class
     });
 
     document.getElementById("toggleThemeBtn").addEventListener("click", () => {
