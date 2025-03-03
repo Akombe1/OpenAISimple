@@ -1,4 +1,4 @@
-# 00_CHat - Basic Chat
+# 00_Chat - Basic Chat
 
 ## This code was generated from the following prompt to gpt4o
 
