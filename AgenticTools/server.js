@@ -1,3 +1,4 @@
+
 /**
  * server.js
  *
@@ -12,24 +13,27 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { OpenAI } from "openai";
+import { get } from "http";
 
-/**
- * server.js
- * 
- * Run with: node server.js
- *
- * Dependencies:
- *   npm install express openai node-fetch
- */
+// For ESM __dirname trick:
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
+// Load env if needed
+dotenv.config();
 
 // Create OpenAI client (v2)
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-const PORT = 3001
+
+const PORT = process.env.PORT || 3000;
 const app = express();
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -37,78 +41,140 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 /**
- * In-memory store of Agents:
- *   Each agent is an object:
+ * In-memory store of Agents.
+ * Each agent is an object:
  *   {
- *     id,          // number or unique
- *     name,        // string
- *     model,       // string
- *     instructions // string
- *     tools: [
- *       { name: 'exampleTool' }, { name: 'anotherTool' }
+ *     id: number,   // unique
+ *     name: string,
+ *     model: string,
+ *     instructions: string,
+ *     tools: [      // array of function-tool definitions (v2 style)
+ *       {
+ *         "type": "function",
+ *         "function": {
+ *           "name": string,
+ *           "description": string,
+ *           "parameters": {...}
+ *         }
+ *       }, ...
  *     ]
  *   }
  */
 let agents = [];
 
-// A few example tools, just returning strings
-function exampleTool(params) {
-  return `exampleTool invoked with params: ${JSON.stringify(params)}`;
-}
-
-function anotherTool(params) {
-  return `anotherTool invoked with params: ${JSON.stringify(params)}`;
-}
-
 /**
- * Dispatch tool call by name
+ * Example "functions" folder loader.
+ * You might have:
+ *   ./functions/exampleTool.js
+ *   ./functions/anotherTool.js
+ * each exporting something like:
+ *   export const details = { ... };
+ *   export async function execute(arg1, arg2) { ... }
  */
-function executeTool(toolName, params) {
-  switch (toolName) {
-    case 'exampleTool':
-      return exampleTool(params);
-    case 'anotherTool':
-      return anotherTool(params);
-    default:
-      return `No known tool: ${toolName}`;
-  }
-}
+
 
 /**
  * createAgent() - functional factory
+ * Tools array can be empty or can be assigned later.
  */
 function createAgent({ name, model, instructions }) {
   return {
-    // ID can be the next array index or a small unique
     id: Date.now(),
     name,
     model,
     instructions,
-    tools: [],
+    tools: [], // will hold v2 style function definitions
   };
 }
 
 /**
  * getCompletionFromAgent(agent, messages)
- *  - calls OpenAI chat.completions.create
+ * - calls openAI.chat.completions.create with:
+ *     model, messages, tools: agent.tools, tool_choice: "auto"
+ * - if model calls a function, we load/execute it, returning
+ *   a specialized message object with the tool’s result.
  */
+
 async function getCompletionFromAgent(agent, messages) {
+  // Prepend system instructions
   const systemMsg = {
     role: 'system',
     content: agent.instructions || 'You are a helpful agent.',
   };
   const chatMessages = [systemMsg, ...messages];
-  
+
+  // Convert agent.tools to the array of function schemas:
+  // For example, if agent.tools are objects with `.details`,
+  // you do something like:
+  const schema = Object.values(agent.tools).map((toolObj) => toolObj.details);
+
   try {
+    // Call the Chat Completions API
     const response = await openai.chat.completions.create({
       model: agent.model,
       messages: chatMessages,
-      // If using function calls, you'd also specify "functions" or "function_call" here
+      tools: schema,      // v2 style
+      tool_choice: "auto" // let the model decide if/when to call
     });
-    return response.choices[0].message;
+
+    const message = response.choices[0].message;
+    if (!message) {
+      return {
+        role: 'assistant',
+        content: '(No content returned.)'
+      };
+    }
+
+    // 1) If the model calls a *single* function
+    if (message.tool_calls[0]) {
+      const fnName = message.tool_calls[0].function.name;
+      const rawArgs = message.tool_calls[0].function.arguments || "{}";
+
+      let parsedArgs = {};
+      try {
+        parsedArgs = JSON.parse(rawArgs);
+      } catch (err) {
+        console.warn('Error parsing function call arguments:', err);
+      }
+
+      // Load all server-side "execute" implementations from /functions
+      const allFunctions = await getFunctions();
+
+      if (allFunctions[fnName]) {
+        // Execute the matching function
+        const result = await allFunctions[fnName].execute(...Object.values(parsedArgs));
+
+        // Return a "function call" style object, so we can see
+        // what function was called and the result
+        return {
+          role: 'assistant',
+          content: '',
+          function_call: {
+            name: fnName,
+            arguments: JSON.stringify(parsedArgs),
+          },
+          function_result: result,
+        };
+      } else {
+        // The model tried to call a function we don’t have
+        return {
+          role: 'assistant',
+          content: `Function not found: ${fnName}`
+        };
+      }
+    }
+
+    // 2) If there's no function call, return the normal text
+    return {
+      role: 'assistant',
+      content: message.content || '',
+    };
   } catch (err) {
-    console.error('OpenAI Error:', err);
-    throw err;
+    console.error('Error calling OpenAI:', err);
+    return {
+      role: 'system',
+      content: 'Error calling OpenAI API.',
+    };
   }
 }
 
@@ -119,14 +185,12 @@ async function getCompletionFromAgent(agent, messages) {
  *   max_turns
  * })
  *
- * A simple round-robin approach among the given agentIds,
- * passing messages in a loop. 
- *
+ * A simple round-robin approach among the given agentIds.
  * Example logic:
  *   - On each turn, pick next agent by index
- *   - Get the completion
- *   - If it calls a tool, handle it
- *   - If no function_call, we may stop
+ *   - getCompletionFromAgent
+ *   - If it calls a function, we append the function result as well
+ *   - Stop after max_turns or no new reason to continue
  */
 async function runMultiAgentConductor({ agentIds, messages, max_turns = 6 }) {
   const result = {
@@ -147,43 +211,26 @@ async function runMultiAgentConductor({ agentIds, messages, max_turns = 6 }) {
       break;
     }
 
-    // Ask this agent for a response
-    const agentMessage = await getCompletionFromAgent(agent, result.messages);
+    // This agent responds
+    const agentResponse = await getCompletionFromAgent(agent, result.messages);
 
-    // Push the assistant message
+    // Add the agent’s response to messages
     result.messages.push({
-      role: 'assistant',
-      name: agent.name, // track which agent responded
-      content: agentMessage.content || '',
+      role: agentResponse.role,       // 'assistant'
+      name: agent.name,
+      content: agentResponse.content, // might be empty if it was a function call
     });
 
-    // Check for function call
-    // (If using function_call, parse it. Example:)
-    // if (agentMessage.function_call) {
-    //   const { name: toolName, arguments: toolArgs } = agentMessage.function_call;
-    //   // check if agent has that tool
-    //   const tool = agent.tools.find(t => t.name === toolName);
-    //   if (tool) {
-    //     const toolResult = executeTool(toolName, JSON.parse(toolArgs || "{}"));
-    //     result.messages.push({
-    //       role: 'function',
-    //       name: toolName,
-    //       content: toolResult
-    //     });
-    //   } else {
-    //     // tool not found
-    //     result.messages.push({
-    //       role: 'system',
-    //       content: `Agent ${agent.name} tried to call unknown tool: ${toolName}`
-    //     });
-    //   }
-    // } else {
-    //   // no function call => maybe end
-    //   break;
-    // }
+    // If the model called a function, also push the "function_result"
+    if (agentResponse.function_call) {
+      result.messages.push({
+        role: 'function',
+        name: agentResponse.function_call.name,
+        content: String(agentResponse.function_result),
+      });
+    }
 
-    // For demonstration, if there's no function_call property, we do next agent
-    // Round-robin: move agentIndex
+    // Round-robin: move to next agent
     agentIndex = (agentIndex + 1) % agentIds.length;
     turnCount++;
   }
@@ -216,19 +263,32 @@ app.post('/create-agent', (req, res) => {
 
   const newAgent = createAgent({ name, model, instructions });
   agents.push(newAgent);
-
-  return res.json(newAgent);
+  return res.json({success: true, newAgent});
 });
 
 /**
  * POST /add-tool
- *  - agentId, toolName
- * Adds a tool to the specified agent
+ *  - agentId, toolDef
+ * toolDef is an object like:
+ *   {
+ *     "type": "function",
+ *     "function": {
+ *       "name": "someTool",
+ *       "description": "...",
+ *       "parameters": {
+ *         "type": "object",
+ *         "properties": { ... },
+ *         "required": [ ... ]
+ *       }
+ *     }
+ *   }
  */
-app.post('/add-tool', (req, res) => {
-  const { agentId, toolName } = req.body;
-  if (!agentId || !toolName) {
-    return res.status(400).json({ error: 'agentId and toolName are required' });
+
+app.post('/add-tool', async (req, res) => {
+  // Expect request body like: { agentId: 123, toolDef: "exampleTool" }
+  const { agentId, toolDef } = req.body;
+  if (!agentId || !toolDef) {
+    return res.status(400).json({ error: 'agentId and toolDef are required' });
   }
 
   const agent = agents.find(a => a.id === Number(agentId));
@@ -236,14 +296,36 @@ app.post('/add-tool', (req, res) => {
     return res.status(404).json({ error: `Agent with id=${agentId} not found.` });
   }
 
-  // In a real system, you'd verify that toolName is a valid known tool, or define it dynamically
-  if (agent.tools.some(t => t.name === toolName)) {
-    return res.status(400).json({ error: 'Tool already assigned to this agent' });
+  // If this agent already has this tool name, reject
+  if (agent.tools.includes(toolDef)) {
+    return res.status(400).json({ error: 'Tool with this name is already assigned.' });
   }
 
-  agent.tools.push({ name: toolName });
-  res.json({ success: true, agent });
-});
+  // Append the tool schema to agent's tools array
+  let functions = await getFunctions();
+  agent.tools.push(functions[toolDef]);
+
+  return res.json({ success: true, agent });
+})
+async function getFunctions() {
+   
+    const files = fs.readdirSync(path.resolve(process.cwd(), "./tools"));
+    const openAIFunctions = {};
+
+    for (const file of files) {
+        if (file.endsWith(".js")) {
+            const moduleName = file.slice(0, -3);
+            const modulePath = `./tools/${moduleName}.js`;
+            const { details, execute } = await import(modulePath);
+
+            openAIFunctions[moduleName] = {
+                "details": details,
+                "execute": execute
+            };
+        }
+    }
+    return openAIFunctions;
+}
 
 /**
  * POST /start-conversation
@@ -280,9 +362,8 @@ app.post('/start-conversation', async (req, res) => {
  * Start the server
  * ------------------------------------------------------------------ */
 function startServer() {
-  const port = PORT || 3000;
-  app.listen(port, () => {
-    console.log(`Server listening on http://localhost:${port}`);
+  app.listen(PORT, () => {
+    console.log(`Server listening on http://localhost:${PORT}`);
   });
 }
 

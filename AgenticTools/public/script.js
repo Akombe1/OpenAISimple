@@ -99,7 +99,7 @@ refreshAgentsBtn.addEventListener('click', async () => {
     data.forEach(agent => {
       const li = document.createElement('li');
       li.className = 'list-group-item';
-      li.textContent = `ID=${agent.id}, name=${agent.name}, model=${agent.model}, tools=[${agent.tools.map(t => t.name).join(', ')}]`;
+      li.textContent = `ID=${agent.id}, name=${agent.name}, model=${agent.model}, tools=[${agent.tools.map(t => t).join(', ')}]`;
       agentsList.appendChild(li);
     });
   } catch (err) {
@@ -113,8 +113,8 @@ refreshAgentsBtn.addEventListener('click', async () => {
  */
 addToolBtn.addEventListener('click', async () => {
   const agentId = toolAgentIdInput.value.trim();
-  const toolName = toolNameInput.value.trim();
-  if (!agentId || !toolName) {
+  const toolDef = toolNameInput.value.trim();
+  if (!agentId || !toolDef) {
     alert('agentId and toolName are required');
     return;
   }
@@ -122,7 +122,7 @@ addToolBtn.addEventListener('click', async () => {
     const resp = await fetch('/add-tool', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId, toolName }),
+      body: JSON.stringify({ agentId, toolDef }),
     });
     const data = await resp.json();
     if (!resp.ok) {
