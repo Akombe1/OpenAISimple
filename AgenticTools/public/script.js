@@ -46,7 +46,9 @@ const resultArea = document.getElementById('resultArea');
  */
 createAgentBtn.addEventListener('click', async () => {
   const name = agentNameInput.value.trim();
-  const model = agentModelInput.value.trim();
+    // Read the selected model from the dropdown
+  const model = document.getElementById('modelInput').value;
+  console.log(model);
   const instructions = agentInstructionsInput.value.trim();
 
   if (!name || !model) {

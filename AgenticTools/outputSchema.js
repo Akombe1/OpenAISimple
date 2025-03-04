@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { Models } from 'openai/resources/models.mjs';
 
 function generateSchema(fileName) {
   // Read the entire file content as a string
@@ -9,10 +10,10 @@ function generateSchema(fileName) {
   let version = '';
   const lines = content.split('\n');
   for (const line of lines) {
-    if (line.startsWith('// Description:')) {
-      description = line.replace('// Description:', '').trim();
-    } else if (line.startsWith('// Version:')) {
-      version = line.replace('// Version:', '').trim();
+    if (line.includes('* Description:')) {
+      description = line.replace('* Description:', '').trim();
+    } else if (line.includes('* Version:')) {
+      version = line.replace('* Version:', '').trim();
     }
     if (description && version) break;
   }
@@ -73,7 +74,7 @@ function generateSchema(fileName) {
 
   return openAISchema;
 }
-
+module.exports = generateSchema;
 // Example usage:
-const schema = generateSchema('tool01.js');
-console.log(JSON.stringify(schema, null, 2));
+//const schema = generateSchema('tool01.js');
+//console.log(JSON.stringify(schema, null, 2));
