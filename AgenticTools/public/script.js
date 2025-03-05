@@ -25,7 +25,7 @@ toggleBackgroundBtn.addEventListener('click', () => {
 // Elements
 const createAgentBtn = document.getElementById('createAgentBtn');
 const agentNameInput = document.getElementById('agentName');
-const agentModelInput = document.getElementById('agentModel');
+const agentModelInput = document.getElementById('modelInput');
 const agentInstructionsInput = document.getElementById('agentInstructions');
 const agentsList = document.getElementById('agentsList');
 const refreshAgentsBtn = document.getElementById('refreshAgentsBtn');
@@ -48,7 +48,6 @@ createAgentBtn.addEventListener('click', async () => {
   const name = agentNameInput.value.trim();
     // Read the selected model from the dropdown
   const model = document.getElementById('modelInput').value;
-  console.log(model);
   const instructions = agentInstructionsInput.value.trim();
 
   if (!name || !model) {
@@ -57,21 +56,17 @@ createAgentBtn.addEventListener('click', async () => {
   }
 
   try {
-    const resp = await fetch('/create-agent', {
+    let resp = await fetch('/create-agent', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, model, instructions }),
     });
-    if (!resp.ok) {
-      const err = await resp.json();
-      alert(`Error creating agent: ${err.error || resp.statusText}`);
-      return;
-    }
-    const data = await resp.json();
-    alert(`Agent created! ID: ${data.id}, Name: ${data.name}`);
+ 
+    let data = await resp.json();
+    console.log(data.newagent);
+    alert(`Agent created! ID: ${data.newagent.id}, Name: ${data.newagent.name}`);
     // Clear fields
     agentNameInput.value = '';
-    agentModelInput.value = '';
     agentInstructionsInput.value = '';
   } catch (err) {
     console.error(err);
@@ -167,10 +162,7 @@ startConversationBtn.addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!resp.ok) {
-      resultArea.innerHTML = 'Server error.';
-      return;
-    }
+    
     const data = await resp.json();
     // data => { messages: [ {role, content, name?}, ... ] }
 

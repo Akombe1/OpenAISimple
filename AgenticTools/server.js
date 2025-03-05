@@ -218,7 +218,7 @@ async function runMultiAgentConductor({ agentIds, messages, max_turns = 6 }) {
     result.messages.push({
       role: agentResponse.role,       // 'assistant'
       name: agent.name,
-      content: agentResponse.content, // might be empty if it was a function call
+      content: JSON.stringify(agentResponse), // might be empty if it was a function call
     });
 
     // If the model called a function, also push the "function_result"
@@ -226,7 +226,7 @@ async function runMultiAgentConductor({ agentIds, messages, max_turns = 6 }) {
       result.messages.push({
         role: 'function',
         name: agentResponse.function_call.name,
-        content: String(agentResponse.function_result),
+        content: JSON.stringify(agentResponse.function_result),
       });
     }
 
@@ -263,7 +263,7 @@ app.post('/create-agent', (req, res) => {
 
   const newAgent = createAgent({ name, model, instructions });
   agents.push(newAgent);
-  return res.json({success: true, newAgent});
+  return res.json({success: true, newagent: newAgent});
 });
 
 /**
